@@ -241,7 +241,7 @@ nginx可以在不重启的情况下对服务器进行升级，客户端没有感
 
 
 
-## 3. nginx学习
+## 3. 学习之前需要掌握
 
 ### 3.1 准备过程
 
@@ -293,6 +293,12 @@ ps -eo pid,ppid,sid,tty,pgrp,comm | grep -E 'bash|PID|nginx'
 这是一个Linux下调试分析诊断工具：可以跟踪程序执行时进程的系统调用以及所收到的信号；
 
 -   跟踪`nginx`进程：`strace -e trace=signal -p 11184`（可以想象成贴一块膏药到进程上），发送SIGHUP给所在进程组（可能只有一个进程）
+
+`strace`输出：
+
+```bash
++++ killed by SIGHUP +++
+```
 
 
 
@@ -386,6 +392,341 @@ setsid ./nginx
 `fg`可以切换到前台。
 
 
+
+### 3.3 信号的概念、认识、处理动作
+
+#### 3.3.1 信号的基本概念
+
+进程之间常用通信手段：发送信号，例如`SIGHUP`信号，`kill`命令。nginx很多内容都依赖于信号，例如：热升级等。
+
+-   信号用来通知某一个进程发生了某一个事情：
+    -   事情，信号都是突发事件，也就是说信号是「异步发生」的，信号也被称为「软中断」。
+
+
+
+**信号如何产生：**
+
+-   某一个进程发送给另外一个进程或者发送给自己；
+-   由内核（操作系统）发送给某个进程
+    -   在键盘上输入命令`Ctrl + c`，发送一个中断信号，或者`kill`命令
+    -   内存访问异常（例如除数为零），硬件都会检测并且通知内核
+
+
+
+**信号的名字：**
+
+-   都是以`SIG`开头，UNIX以及类UNIX操作系统（Linux、freebsd、solaris）所支持的信号各不相同，在10到64个之间。
+
+-   信号既有名字，其实也是一些数字，信号是一些正整数常量，需要引入`#include <signal.h>``
+
+-   ``gcc`搜索头文件的路径：
+
+    -   `/usr/local/include/`
+    -   `/usr/local/`
+
+-   `gcc`搜索库文件
+
+    -   `/usr/`等
+
+-   在根路径下搜索`signal.h`文件，并在「文件内容」中搜索`SIGHUP`在第几行：
+
+    ```bash
+    find / -name "signal.h" | xargs grep -in "SIGHUP"
+    ```
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230228133128968.png" alt="image-20230228133128968" style="zoom:50%;" />
+
+信号就是一些宏定义，从1开始。
+
+
+
+#### 3.3.2 `kill`命令
+
+`kill`命令可以杀死进程，但是有个误解，`kill`的工作是发送信号给进程，而不是所谓「杀死」，如果自己的程序没有特殊处理，操作系统对信号由默认动作，绝大多数都是直接杀死进程，但是例如`SIGSTOP`和`SIGTSP`就是放入后台。
+
+-   `kill`能给进程发送「所有的信号」，默认发送`SIGTERM`（15），可以通过`strace -e trace=signal -p pid`追踪。
+-   `kill -n pid`：给pid进程发送n信号。
+
+
+
+**重要信号：**
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230228135349918.png" alt="image-20230228135349918" style="zoom:50%;" />
+
+`-9 SIGKILL`是代码不能处理的信号。同时`-18`继续运行也是在后台运行，需要`fg`。
+
+
+
+#### 3.3.3 进程的状态
+
+>    aux是BSD风格显示格式，
+
+进程状态及其含义，`ps`命令的`STAT`列：
+
+| 状态 | 含义                                                      |
+| ---- | --------------------------------------------------------- |
+| D    | 不可中断的休眠状态(通常是I/O的进程)，可以处理信号，有延迟 |
+| R    | 可执行状态&运行状态(在运行队列里的状态)                   |
+| S    | 可中断的休眠状态之中（等待某事件完成），可以处理信号      |
+| T    | 停止或被追踪（被作业控制信号所停止）                      |
+| Z    | 僵尸进程                                                  |
+| X    | 死掉的进程                                                |
+| <    | 高优先级的进程                                            |
+| N    | 低优先级的进程                                            |
+| L    | 有些页被锁进内存                                          |
+| s    | Session  leader（进程的领导者），在它下面有子进程         |
+| t    | 追踪期间被调试器所停止                                    |
+| +    | 位于前台的进程组                                          |
+
+ 
+
+#### 3.3.4 信号处理的相关动作
+
+当某个信号出现时，我们可以按三种方式进行「信号处理」：
+
+1.   执行系统默认动作，绝大部分都是杀死这个进程，少数是停止，或者继续运行
+2.   忽略此信号，例如`signal(SIGHUP, SIG_IGN);`就是忽略`SIGHUP`信号，但是`SIGKILL`和`SIGSTOP`无法被忽略或者被捕捉
+3.   捕捉该信号，写一个处理函数，信号来的时候用处理函数来处理，当然对`SIGKILL`和`SIGSTOP`无效。
+
+
+
+### 3.4 Unix/Linux体系结构、信号变成初步
+
+#### 3.4.1 Unix/Linux操作系统体系结构
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230228144208636.png" alt="image-20230228144208636" style="zoom:50%;" />
+
+类Unix操作系统分为两个状态：
+
+1.   用户态
+2.   内核态
+
+
+
+-   操作系统/内核：用来控制计算机硬件资源，提供应用程序运行的环境。
+
+    程序要么运行在用户态，用么运行在内核态，一般来说运行在用户态，当程序要执行一些「特殊代码」的时候，程序就可能切换到内核态，这种切换由操作系统控制，不需要人为控制。
+
+    也就是说用户态就是最外圈的活动空间。
+
+-   系统调用：一些系统函数（大概200～300个库函数），只需要调用系统函数接口
+
+-   bash和shell的关系：
+
+    -   bash：borne again shell（重新装配的shell），是shell的一种，linux默认用bash，可以改成zsh等
+
+        -   bash也是一个可执行程序，主要作用是：把用户输入的命令翻译给操作系统（命令解释器）
+        -   可以在bash上再执行bash，此时`exit`就会退出最上层的bash
+        -   bash分隔系统调用和应用程序，有「胶水」的感觉；
+    
+-   用户态和内核态的切换：
+
+    -   运行于用户态的进程可以执行的操作和访问的资源会受到限制（用户态权限小）
+    -   而运行在内核态的进程可以执行任何操作并且在资源的使用上没有限制（内核态权限大）
+    -   进程执行的时候大部分时间处于用户态，只有需要内核提供服务时才会切换到内核态，内核态做完事情后，又回到用户态
+    -   `malloc()`和`printf()`都会切换，这种状态是操作系统干的，不需要人为介入
+
+
+
+>   为什么要区分内核态和用户态：
+>
+>   -   一般情况下，程序都运行在用户态，权限小，不至于危害到系统的其他部分；当需要进行一些危险操作的时候，系统提供接口来操作
+>
+>   -   既然这些接口是系统提供的，那么这些接口也是操作系统统一管理的，资源是有限的，如果大家都来访问这些资源，不加以管理，会出现「访问冲突」和「访问资源耗尽导致系统崩溃」。系统提供这些接口，就是为了减少有限的资源的访问和使用上的冲突。例如经典的「卖票问题」：
+>
+>       <img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230228150001535.png" alt="image-20230228150001535" style="zoom:50%;" />
+>       
+>       
+
+
+
+**什么时候出现用户态切换到内核态？**
+
+-   系统调用，例如调用`malloc()`
+-   异常时间，比如来了个信号
+-   外围设备中断
+
+
+
+#### 3.4.2 `signal`函数
+
+信号来了之后，可以忽略，可以捕捉，利用`signal()`来处理这个事情。
+
+
+
+**c3/nginx3_4_1.c**
+
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <signal.h>
+#include <errno.h>
+
+int g_mysign = 0;
+//这个函数能够修改这个全局变量g_mysign的值
+//这是一个不可重入函数
+void muNEfunc(int value)
+{
+    //.....其他处理代码
+    g_mysign = value;
+    //.....其他处理代码
+}
+
+//信号处理函数,系统调用的时候会自动把信号的值传递过来
+void sig_usr(int signo)
+{
+    //int tmpsign = g_mysign;
+    muNEfunc(22); //因为一些实际需求必须要在sig_user这个信号处理函数里调用muNEfunc
+
+    int myerrno = errno;
+
+    if(signo == SIGUSR1)
+    {
+        printf("收到了SIGUSR1信号!\n");
+    }
+    else if(signo == SIGUSR2)
+    {
+        printf("收到了SIGUSR2信号!\n");
+    }
+    else
+    {
+        //其他信号不太可能执行到这里
+        printf("收到了未捕捉的信号%d!\n",signo);
+    }
+
+
+    //g_mysign = tmpsign;
+    errno = myerrno;
+}
+
+int main(int argc, char *const *argv)
+{
+    //注册两个信号处理函数
+    if(signal(SIGUSR1,sig_usr) == SIG_ERR)  //系统函数，参数1：是个信号，参数2：是个函数指针，代表一个针对该信号的捕捉处理函数
+    {
+        printf("无法捕捉SIGUSR1信号!\n");
+    }
+    if(signal(SIGUSR2,sig_usr) == SIG_ERR)
+    {
+        printf("无法捕捉SIGUSR2信号!\n");
+    }
+    for(;;)
+    {
+        sleep(1); //休息1秒
+        printf("休息1秒\n");
+
+        muNEfunc(15);
+        printf("g_mysign=%d\n",g_mysign);
+        //拿g_mysign做一些其他用途；
+    }
+    printf("再见!\n");
+    return 0;
+}
+```
+
+使用`kill -USR1 pid`对进程发送`SIGUSR1`信号。
+
+进程收到信号，这个事件就会被内核注意到，进入内核态：
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230228153810149.png" alt="image-20230228153810149" style="zoom:50%;" />
+
+-   信号处理函数是在用户态执行的，再去内核态执行收尾工作
+-   最后再回到用户态
+
+
+
+#### 3.4.3 可重入函数
+
+所谓的「可重入函数」（或叫异步信号安全），就是在信号处理中是安全的函数：
+
+-   可重入函数：在信号处理程序中保证调用安全的函数，这些函数是可重入的并被称为异步信号安全的
+
+有很多大家周知的函数都是不可重入的，例如`malloc()`和`printf()`，最好在信号处理函数中不要调用「不可重入函数」，还有可能导致`errno`的错误，因为信号处理函数的执行时间是未知的，如果在信号处理函数中改变了`errno`，可能会覆盖主流程的`errno`。
+
+**信号处理函数的注意事项：**
+
+1.   在信号处理函数中，尽量使用简单的语句，做简单的事情，尽量不要调用系统函数以免引起麻烦（这是最好的方法，就改改局部变量就行）
+
+2.   如果必须要在信号处理函数中调用一些系统函数，那么要保证在信号处理函数中调用的 系统函数 一定要是「可重入的」
+
+3.   如果必须要在信号处理函数中调用那些可能修改`errno`的值的系统函数，那么就得事先备份`errno`的值，从信号处理函数返回之前，在信号处理函数的返回值前将`errno`恢复。
+
+     ```cpp
+     void fun(int signo)
+     {
+         int myerrno = errno;
+         //信号处理
+         errno = myerrno;
+         return ;
+     }
+     ```
+
+     
+
+#### 3.4.4 不可重入函数（错用演示）
+
+在信号处理函数和main函数中都无限循环`malloc()`：
+
+**c3/nginx3_4_2.c**
+
+```cpp
+#include <stdio.h>
+#include <stdlib.h>  //malloc
+#include <unistd.h>
+#include <signal.h>
+
+//信号处理函数
+void sig_usr(int signo)
+{
+    //这里也malloc，这是错用，不可重入函数不能用在信号处理函数中；
+    int* p;
+    p = (int *) malloc (sizeof(int)); //用了不可重入函数；
+    free(p);
+
+    if(signo == SIGUSR1)
+    {
+        printf("收到了SIGUSR1信号!\n");
+    }
+    else if(signo == SIGUSR2)
+    {
+        printf("收到了SIGUSR2信号!\n");
+    }
+    else
+    {
+        printf("收到了未捕捉的信号%d!\n",signo);
+    }
+
+}
+
+int main(int argc, char *const *argv)
+{
+    if(signal(SIGUSR1,sig_usr) == SIG_ERR)  //系统函数，参数1：是个信号，参数2：是个函数指针，代表一个针对该信号的捕捉处理函数
+    {
+        printf("无法捕捉SIGUSR1信号!\n");
+    }
+    if(signal(SIGUSR2,sig_usr) == SIG_ERR)
+    {
+        printf("无法捕捉SIGUSR2信号!\n");
+    }
+    for(;;)
+    {
+        //sleep(1); //休息1秒
+        //printf("休息1秒\n");
+        int* p;
+        p = (int *) malloc (sizeof(int));
+        free(p);
+    }
+    printf("再见!\n");
+    return 0;
+}
+```
+
+一旦在信号处理中用了不可重入函数，可能导致程序错乱，导致再发送信号没用了，进程的状态变成`S+`也就是休眠。
+
+**这种错误在实际操作中很难发现。**
+
+>   `signal()`因为兼容性和可靠性等一些历史问题，不建议使用，官方建议使用`sigaction()`来代替。
 
 
 
