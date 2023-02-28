@@ -241,7 +241,7 @@ nginx可以在不重启的情况下对服务器进行升级，客户端没有感
 
 
 
-## 3. nginx学习方法
+## 3. nginx学习
 
 ### 3.1 准备过程
 
@@ -255,7 +255,137 @@ nginx可以在不重启的情况下对服务器进行升级，客户端没有感
 
 创建一个自己的linux下的c语言程序：`/root/cpp_code/nginx/nginx.c`。
 
+### 3.2 终端和进程的关系
+
+#### 3.3.1 终端
+
+bash, zsh等同理。
+
+每多一个新连接，都会有一个`-bash`进程，`pts`代表「虚拟终端」，每连接一个虚拟终端到linux操作系统，就会出现一个bash进程(shell)，用来解释用户输入的命令。
+
+shell本质上也是一个可执行程序运行产生的进程
 
 
-### 3.2 nginx源码学习方法
+
+#### 3.3.2 终端上开启进程
+
+运行的进程就是终端的子进程。
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230227214025076.png" alt="image-20230227214025076" style="zoom:40%;" />
+
+
+
+每一个进程还属于一个进程组：一个或者多个进程的集合。每一个进程组有一个唯一的进程组ID，可以调用系统函数来创建进程组，加入进程组
+
+session（会话）就是进程组的集合。只要不进行特殊的系统函数调用，一般一个bash上的所有进程都属于一个会话，而这个会话有一个session leader，一般这个shell就是 session leader，可以通过系统调用增加session
+
+```bash
+ps -eo pid,ppid,sid,tty,pgrp,comm | grep -E 'bash|PID|nginx'
+```
+
+-   如果关闭终端，系统会发送`SIGHUP`信号（终端断开信号），给session leader，也就是这个bash进程
+-   bash进程收到`SIGHUP`信号后，会把这个信号发送给session中的所有进程
+
+
+
+#### 3.3.4 strace工具
+
+这是一个Linux下调试分析诊断工具：可以跟踪程序执行时进程的系统调用以及所收到的信号；
+
+-   跟踪`nginx`进程：`strace -e trace=signal -p 11184`（可以想象成贴一块膏药到进程上），发送SIGHUP给所在进程组（可能只有一个进程）
+
+
+
+如果关闭一个shell，则bash先把SIGHUP发送给同一个session中所有进程，然后发送`SIGHUP`给自己。
+
+
+
+#### 3.3.5 终端关闭时如何让进程不退出
+
+
+
+**忽略`SIGHUP`信号**
+
+我们可以通过忽略`SIGHUP`信号，使得终端关闭，进程依然执行，同时该进程的ppid变成1。
+
+```cpp
+
+ //忽略SIGHUP信号,设置某个信号来的时候处理程序。
+ //SIG_IGN: 要求忽略这个信号，请操作系统不要用缺省的方式对待本进程（不要杀掉我）
+ signal(SIGHUP, SIG_IGN);
+
+```
+
+
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230227223431253.png" alt="image-20230227223431253" style="zoom:40%;" />
+
+
+
+**设置一个新的session id**
+
+```cpp
+
+    else if(pid == 0)
+    {
+        //子进程
+        setsid();
+        for(;;)
+        {
+        printf("子进程休息一秒\n");
+        sleep(1);
+        }
+    }
+    else if(pid > 0)
+    {
+        //父进程
+        setsid();//父进程的setsid()无效
+        for(;;)
+        {
+
+        printf("父进程休息一秒\n");
+        sleep(1);
+        }
+
+    }
+
+```
+
+
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230227233945464.png" alt="image-20230227233945464" style="zoom:50%;" />
+
+可以看到两个`nginx`进程，只有一个有新的`sid`，而另一个的`sid`和某个zsh相同。
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230227234059256.png" alt="image-20230227234059256" style="zoom:50%;" />
+
+关闭执行`nginx`的zsh，子进程依然存在！成为孤儿进程，PPID为1。
+
+也可以使用`setsid`命令，而且能够使启动的进程在一个新的session中，这样终端关闭时该进程就不会退出
+
+```bash
+setsid ./nginx
+```
+
+这样进程的sid pid都与之前的无关：
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230227234831946.png" alt="image-20230227234831946" style="zoom:50%;" />
+
+
+
+**nohup**
+
+`nohup` 也可以忽略`SIGHUP`信号，与之前的忽略`SIGHUP`信号道理相同，用于在后台运行一个命令，即使用户退出登录或关闭终端窗口，命令也能够继续运行，它会把输出重定位到`nohup.out`文件中。只有关闭终端才会出现孤儿进程的效果，没有关闭终端和正常进程一样。
+
+
+
+#### 3.3.6 后台运行 `&`
+
+在命令后加一个`&`就是后台运行，在执行的同时终端可以干其他事。
+
+`fg`可以切换到前台。
+
+
+
+
 
