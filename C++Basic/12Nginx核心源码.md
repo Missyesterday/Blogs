@@ -1,4 +1,4 @@
-# 12 Nginx核心源码
+# 12 仿写nginx
 
 >   提炼有用的代码，放入自己的知识库。
 
@@ -1292,5 +1292,745 @@ int main(int argc, char *const *argv)
 
 #### 4.1.1 信号高级认识范例
 
+对于`SIGUSR1`和`SIGUSR2`有如下信号处理函数：
 
+```cpp
+//信号处理函数
+void sig_usr(int signo)
+{
+    if(signo == SIGUSR1)
+    {
+        printf("收到了SIGUSR1信号，我休息10秒......!\n");
+        sleep(10);
+        printf("收到了SIGUSR1信号，我休息10秒完毕，苏醒了......!\n");
+    }
+    else if(signo == SIGUSR2)
+    {
+        printf("收到了SIGUSR2信号，我休息10秒......!\n");
+        sleep(10);
+        printf("收到了SIGUSR2信号，我休息10秒完毕，苏醒了......!\n");
+    }
+    else
+    {
+        printf("收到了未捕捉的信号%d!\n",signo);
+    }
+}
+```
+
+-   收到信号休息10秒，这个时候流程回不到`main()`，所以`main()`中的语句无法执行
+-   在触发`SIGUSR1`信号并因此`sleep`10秒的期间，这个信号是阻塞的（加入阻塞信号集），就算多次发送`SIGUSR1`信号，也不会重新执行对应的信号处理函数，而是等待「上一次信号处理函数执行完毕」才第二次执行`SIGUSR1`，因为为「未决信号集」只能是0或1。
+
+**但是如果发送`SIGUSR1`和`SIGUSR2`信号：**
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230301132009294.png" alt="image-20230301132009294" style="zoom:50%;" />
+
+-   在`USR1`sleep期间，发送`USR2`信号，会进入`USR2`的sleep，而`USR2`sleep完毕后，`USR1`的sleep是**立即结束！**例如USR1休息10秒，在第五秒时发送`USR2`信号，会打断`USR1`的sleep，`USR2`休息10秒，出来后`USR1`的sleep立即结束。
+
+-   执行USR1信号处理函数，没有执行完的时候，是可以继续进入USR2信号处理函数中去的；
+
+    相当与USR1和USR2的信号处理函数都没有结束，都在阻塞着，此时发送`USR1`和`USR2`都不会有反应
+
+-   只有USR2的信号处理函数处理完毕，才会返回到USR1的信号处理程序，只有USR1的信号处理函数执行完毕（注意USR2的信号处理函数只是打断了USR1的sleep，USR1处理程序的剩下部分会继续执行），才会回到`main()`主流程去继续执行。
+
+
+
+>   如果希望在处理USR1信号，执行USR1信号处理函数的时候，如果来了USR2信号，如何屏蔽这个USR2信号呢？也就是说不希望跳转到别的信号处理函数中去。
+
+
+
+#### 4.1.2 服务器架构初步
+
+一套通讯架构源代码，应该存在不同的目录，需要注意：
+
+-   文件名中不要带空格，不要用中文！
+-   字母、数字、下划线
+
+
+
+**本项目的目录规划如下：**
+
+-   `_include/`：专门存放各种头文件，如果分散的话，引用头文件还需要不同的目录前缀
+-   `app/`：放主应用程序.c（main函数所在文件）以及一些比较核心的文件，`app/`下还有：
+    -   `link_obj/`：临时目录，存放临时的`.o`文件，这个目录不是手工创建，由makefile创建
+    -   `dep/`：临时目录，存放`.d`的依赖文件，依赖文件能够告知系统哪些相关的文件发生变化，需要重新编译，也是由makefile创建
+    -   `nginx.c`：主文件，`main()`入口函数
+    -   `nginx_conf.c`：普通的源码文件，与`nginx.c`关系密切
+-   `misc/`：专门存放不好归类的`.c`文件
+-   `net/`：专门存放和网络处理相关的`.c`文件
+-   `proc/`：专门存放和进程处理的相关`.c`文件
+-   `signal/`：专门存放和信号处理相关的`.c`文件
+
+
+
+**本项目的makefile规划：**
+
+-   根目录下三个文件：
+    -   `makefile`：编译项目的入口脚本，编译项目从这里开始，起总体控制作用
+    -   `config.mk`：配置脚本，被makefile包含，单独分离出来有利于修改，有变动的东西都可以写到这里
+    -   `common.mk`：核心的编译脚本，用来定义makefile的编译规则，依赖规则等，通用性很强，每个子目录的`makefile`都用到了这个脚本
+-   每个子目录都有一个`makefile`文件，每个文件都会包含根目录下的`common.mk`
+-   本项目的`makefile`不支持目录中还有子目录，只支持一级目录。
+
+#### 4.1.3 编译工具make
+
+-   每个`.c`生成一个`.o`，最终链接到一起，生成一个可执行文件。
+
+编译实际的项目肯定要用`make`，这个命令能编译，链接。。。最终生成可执行文件，大型项目一般用make：
+
+-   make去当前的目录读取`Makefile`文件，根据`Makefile`里的规则，把源代码编译成可执行文件。
+-   `Makefile`定义了项目的编译、链接规则，实际上`Makefile`就是编译工程中要用到的各种源文件的一个依赖关系描述。
+-   有的工具能自动生成`Makefile`，例如`autotools`，`Makefile`文件没有扩展名，放在`make`命令执行的目录，一般就是放在根目录下，也会根据需要放在子目录。
+
+
+
+本项目写一个通用性比较好（还行）的Makefile。
+
+
+
+#### 4.1.4 makefile介绍
+
+-   `make`编译项目，生成可执行文件
+-   `make clean`清除临时文件，实际写在makefile中
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230301143325188.png" alt="image-20230301143325188" style="zoom:40%;" />
+
+makefile中记录的就是上图的依赖关系。
+
+如果修改了`ngx_func.h`，重新编译只会编译`nginx.o`和`ngx_conf.c`，而不会编译与其无关的`ngx_signal.o`。
+
+
+
+#### 4.1.5 makefile的实现
+
+
+
+代码中有详细注释。
+
+
+
+### 4.2 配置文件读取和解析
+
+#### 4.2.1 前提内容和修改
+
+使用配置文件，能使服务器程序有极大的灵活性，应该首先解决服务器配置文件，读取配置文件中的配置项到内存中来。
+
+
+
+配置文件：是一个文本文件，里面除了注释行之外，不要用中文，只在配置文件中使用字母数字下划线。
+
+我们规定：
+
+-   以`#`开始的行为注释行，注释可以有中文
+-   每个有效配置项用 等号`=` 处理，等号前不超过40个字符，等号后不超过400个字符；
+-   `[`开头的表示组信息，也等价于注释行
+
+
+
+#### 4.2.2 配置功能读取实战
+
+nginx的配置文件在`conf/`目录下，但是里面的内容太丰富了，嵌套了太多层，我们简化了配置文件，并将配置文件写在项目根目录下的`nginx.conf`文件中。
+
+读取配置文件的代码：
+
+**_include/ngx_c_conf.h:**
+
+文件名字中间有个`_c`代表和类相关的文件。
+
+```cpp
+
+#ifndef __NGX_CONF_H__
+#define __NGX_CONF_H__
+
+#include <vector>
+
+#include "ngx_global.h"  //一些全局/通用定义
+
+//类名可以遵照用C开头的命名规范,代表Class
+class CConfig
+{
+
+//单例设计模式
+private:
+	CConfig();
+public:
+	~CConfig();
+private:
+	static CConfig *m_instance;
+
+public:	
+	static CConfig* GetInstance() 
+	{	
+		if(m_instance == NULL)
+		{
+			//锁,多线程才用,第一次调用要在主线程中调用
+            //这个代码可能不是那么好
+			if(m_instance == NULL)
+			{					
+				m_instance = new CConfig();
+                //定义一个静态的变量,这个变量是类中类型的，用来释放单例对象,而不是程序结束,系统自动释放
+				static CGarhuishou cl; 
+			}
+			//放锁		
+		}
+		return m_instance;
+	}	
+
+	class CGarhuishou  //类中套类，用于释放单例对象
+	{
+	public:				
+		~CGarhuishou()
+		{
+			if (CConfig::m_instance)
+			{						
+				delete CConfig::m_instance;
+				CConfig::m_instance = NULL;				
+			}
+		}
+	};
+//
+public:
+    //重要的成员函数
+    bool Load(const char *pconfName); //装载配置文件
+	const char *GetString(const char *p_itemname);
+	int  GetIntDefault(const char *p_itemname,const int def);
+
+public:
+    //存储配置信息的列表, 里面存的是指针
+	std::vector<LPCConfItem> m_ConfigItemList; 
+
+};
+
+#endif
+
+```
+
+**`_include/ngx_global.h`**
+
+```cpp
+//结构定义
+typedef struct
+{
+	char ItemName[50];
+	char ItemContent[500];
+}CConfItem,*LPCConfItem;
+
+```
+
+-   `CConfItem`结构体有两个成员，一个存配置名，一个存配置信息。
+
+
+
+-   使用了单例设计模式
+-   `m_ConfigItemList`存储配置信息，里面是一个`LPCConfItem`的指针，
+-   `Load()`函数装载配置文件到内存中
+-   `GetString()`根据配置名查询配置信息，返回`string`类型
+-   `GetIntDefault()`也是根据配置名查询配置信息，返回`int`类型，如果没有查询到，会有一个缺省值(`def`).
+
+
+
+**app/ngx_c_conf.cxx:**
+
+
+
+```cpp
+
+//系统头文件放上面
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <vector>
+
+//自定义头文件放下面,因为g++中用了-I参数，所以这里用<>扩起来也可以
+#include "ngx_func.h"     //函数声明
+#include "ngx_c_conf.h"   //和配置文件处理相关的类,名字带c_表示和类有关
+
+//静态成员赋值
+CConfig *CConfig::m_instance = NULL;
+
+//构造函数
+CConfig::CConfig()
+{		
+}
+
+//析构函数
+CConfig::~CConfig()
+{    
+    //删除迭代器中的内容
+	std::vector<LPCConfItem>::iterator pos;	
+	for(pos = m_ConfigItemList.begin(); pos != m_ConfigItemList.end(); ++pos)
+	{		
+		delete (*pos);
+	}//end for
+	m_ConfigItemList.clear(); 
+}
+
+//加载配置文件的函数
+bool CConfig::Load(const char *pconfName) 
+{   
+    //首先根据传入的字符串打开文件
+    FILE *fp;
+    fp = fopen(pconfName,"r");
+    if(fp == NULL)
+        return false;
+
+    //每一行配置文件读出来都放到linebuf
+    char  linebuf[501];   //每行配置都不要太长，保持<500字符内，防止出现问题
+    
+    //走到这里，文件打开成功 
+    while(!feof(fp))  //检查文件是否结束 ，没有结束则条件成立
+    {    
+        //注意代码的严密性
+        //从文件中读数据，每次读一行，一行最多不要超过500个字符 
+        if(fgets(linebuf,500,fp) == NULL) 
+            continue;
+
+        //读到空行
+        if(linebuf[0] == 0)
+            continue;
+
+        //处理注释行, 也就是判断第一个字符是下面这些字符开头的
+        //以及处理其他的情况,例如换行,空行等, 直接跳过
+        if(*linebuf==';' || *linebuf==' ' || *linebuf=='#' || *linebuf=='\t'|| *linebuf=='\n')
+			continue;
+        
+    //与goto语句一起使用
+    lblprocstring:
+        //读取的字符串后边有换行，回车，空格等都截取掉
+		if(strlen(linebuf) > 0)
+		{
+            //ascii码的形势来判断
+			if(linebuf[strlen(linebuf)-1] == 10 || linebuf[strlen(linebuf)-1] == 13 || linebuf[strlen(linebuf)-1] == 32) 
+			{
+				linebuf[strlen(linebuf)-1] = 0;
+				goto lblprocstring;
+			}		
+		}
+        //空行
+        if(linebuf[0] == 0)
+            continue;
+        //也等价于配置行
+        if(*linebuf=='[') //[开头的也不处理
+			continue;
+
+        // 类似于的“ListenPort = 5678”配置项走下来；
+        //用 = 分割, 右边的保存到ptmp中
+        char *ptmp = strchr(linebuf,'=');
+        if(ptmp != NULL)
+        {
+            //LPConfItem是一个指向结构体的指针, CConfItem是结构体, 里面存储配置项名字ItemName和配置项内容ItemContent
+            //new的时候是new结构
+            LPCConfItem p_confitem = new CConfItem;                    //注意前边类型带LP，后边new这里的类型不带
+
+            //清零
+            memset(p_confitem,0,sizeof(CConfItem));
+            //拷贝前n个字符
+            strncpy(p_confitem->ItemName,linebuf,(int)(ptmp-linebuf)); //等号左侧的拷贝到p_confitem->ItemName
+            strcpy(p_confitem->ItemContent,ptmp+1);                    //等号右侧的拷贝到p_confitem->ItemContent, 遇到'\0'结束
+
+            //去掉首位的空格，定义在`app/ngx_string.cxx`中
+            Rtrim(p_confitem->ItemName);
+			Ltrim(p_confitem->ItemName);
+			Rtrim(p_confitem->ItemContent);
+			Ltrim(p_confitem->ItemContent);
+
+            //printf("itemname=%s | itemcontent=%s\n",p_confitem->ItemName,p_confitem->ItemContent);            
+            
+            
+            m_ConfigItemList.push_back(p_confitem);  //内存要释放，因为这里是new出来的 
+        } //end if
+    } //end while(!feof(fp)) 
+
+    
+    //关闭文件
+    fclose(fp); 
+    return true;
+}
+
+//根据ItemName获取配置信息字符串，没有修改不用考虑互斥
+const char *CConfig::GetString(const char *p_itemname)
+{
+	std::vector<LPCConfItem>::iterator pos;	
+	for(pos = m_ConfigItemList.begin(); pos != m_ConfigItemList.end(); ++pos)
+	{	
+		if(strcasecmp( (*pos)->ItemName,p_itemname) == 0)
+			return (*pos)->ItemContent;
+	}//end for
+	return NULL;
+}
+//根据ItemName获取int类型配置信息，没有修改,所以不用考虑互斥
+//def是缺省值, 如果没找到则返回缺省值
+int CConfig::GetIntDefault(const char *p_itemname,const int def)
+{
+	std::vector<LPCConfItem>::iterator pos;	
+	for(pos = m_ConfigItemList.begin(); pos !=m_ConfigItemList.end(); ++pos)
+	{	
+		if(strcasecmp( (*pos)->ItemName,p_itemname) == 0)
+            //转为int类型
+			return atoi((*pos)->ItemContent);
+	}//end for
+	return def;
+}
+```
+
+-   成员函数的实现
+
+
+
+**测试代码：**
+
+**nginx.conf**
+
+```
+ 
+#[开头的表示组信息，也等价于注释行
+[Socket]
+
+#监听端口
+ListenPort = 5678    
+
+#DBInfo代表数据信息
+DBInfo = 127.0.0.1;1234;myr;123456;mxdb_g
+```
+
+**在nginx.cxx的main函数中添加：**
+
+```cpp
+//我们在main中，先把配置读出来，供后续使用,不要在子线程中首次调用GetInstance
+CConfig *p_config = CConfig::GetInstance(); //单例类
+
+//把项目根目录下的配置文件加载到内存
+if(p_config->Load("nginx.conf") == false) 
+{
+    printf("配置文件载入失败，退出!\n");
+    exit(1);
+}
+//测试, 打印一些配置项信息  
+int port = p_config->GetIntDefault("ListenPort", 0); //0是缺省值
+ printf("port=%d\n",port);
+ const char *pDBInfo = p_config->GetString("DBInfo");
+ if(pDBInfo != NULL)
+ {
+   printf("DBInfo=%s\n",pDBInfo);
+ }
+```
+
+可以打印出`ListenPort`的值和`DBInfo`的值。
+
+
+
+### 4.3 内存泄露的检测工具memcheck
+
+写完代码之后，需要检查，例如`fd`是否关闭，内存是否释放，有没有内存泄漏的问题。
+
+「**valgrind**」工具可以帮助程序员寻找程序里的bug和改进程序性能的工具集。擅长发现内存的管理问题，这个工具集中有若干工具，其中最重要的工具是「**Memcheck**」，用来检查内存是否泄漏。
+
+没有就直接安装：
+
+```bash
+yum install valgrind
+```
+
+#### 4.3.1 memcheck的基本功能
+
+它能发现如下问题：
+
+-   使用未初始化的内存
+-   使用已经释放的内存
+-   使用超过`malloc()`分配的内存
+-   对于 堆栈 的非法访问
+-   申请的内存是否有释放
+-   `malloc/free`和`new/delete`申请和释放内存的匹配
+-   `memcpy()`内存拷贝函数中 源指针和目标指针 重叠
+
+
+
+#### 4.3.2 内存泄漏检查
+
+所有应该释放的内存，都要释放掉，这点一定要绝对的严谨和认真。
+
+首先，将`config.mk`的`DEBUG`设置为`true`，很多工具能输出更多调试信息。
+
+格式如下：
+
+```bash
+valgrind --tool=memcheck 一些开关 可执行文件名
+```
+
+常用选项：
+
+-   `--tool=memcheck`：使用valgrind工具集中的memcheck工具
+-   `--leak-check=full`：完全（full）检查内存泄漏
+-   `--show-reachable=yes`：显示内存泄漏的地点
+-   `--trace-children=yes`：是否跟入子进程
+-   `--log-file=log.txt`：将调试信息输出到`log.txt`，不输出到屏幕
+
+
+
+例如`valgrind --tool=memcheck ./nginx`，它会输出一个报告：
+
+```
+==4039==
+==4039== HEAP SUMMARY:
+==4039==     in use at exit: 0 bytes in 0 blocks
+==4039==   total heap usage: 7 allocs, 7 frees, 5,035 bytes allocated
+==4039==
+==4039== All heap blocks were freed -- no leaks are possible
+==4039==
+==4039== For lists of detected and suppressed errors, rerun with: -s
+==4039== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+```
+
+可以看到没有问题，7次分配，7个释放。
+
+
+
+如果把`CConfig`的析构函数内容注释掉，重新执行上述命令，输出：
+
+```
+==4213==
+==4213== HEAP SUMMARY:
+==4213==     in use at exit: 1,100 bytes in 2 blocks
+==4213==   total heap usage: 7 allocs, 5 frees, 5,035 bytes allocated
+==4213==
+==4213== LEAK SUMMARY:
+==4213==    definitely lost: 1,100 bytes in 2 blocks
+==4213==    indirectly lost: 0 bytes in 0 blocks
+==4213==      possibly lost: 0 bytes in 0 blocks
+==4213==    still reachable: 0 bytes in 0 blocks
+==4213==         suppressed: 0 bytes in 0 blocks
+==4213== Rerun with --leak-check=full to see details of leaked memory
+==4213==
+==4213== For lists of detected and suppressed errors, rerun with: -s
+==4213== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+```
+
+可以看到有7个分配，5个释放，配置项的两项都是内存泄漏，确定的内存泄漏有1100字节，共两个block。
+
+加上`--leak-check=full`可以知道哪里泄漏了：
+
+```
+==4275== 1,100 bytes in 2 blocks are definitely lost in loss record 1 of 1
+==4275==    at 0x4C2A593: operator new(unsigned long) (vg_replace_malloc.c:344)
+==4275==    by 0x401519: CConfig::Load(char const*) (ngx_c_conf.cxx:87)
+==4275==    by 0x4010DA: main (nginx.cxx:24)
+```
+
+从下往上看，得知，是`ngx_c_conf.cxx`的87行没有释放，这一行就是一条` LPCConfItem p_confitem = new CConfItem;`new语句。
+
+
+
+加上`--show-reachable=yes`：
+
+```
+==4369==    at 0x4C2A593: operator new(unsigned long) (vg_replace_malloc.c:344)
+==4369==    by 0x401519: CConfig::Load(char const*) (ngx_c_conf.cxx:87)
+==4369==    by 0x4010DA: main (nginx.cxx:24)
+```
+
+测试发现多了0x开头的地址。
+
+>   综合来说使用`valgrind --tool=memcheck --leak-check=full --show-reachable=yes  ./nginx`即可。
+
+
+
+**第二种泄漏：**
+
+如果`fopen()`打开的文件没有`fclose()`：
+
+`valgrind --tool=memcheck --leak-check=full --show-reachable=yes  ./nginx`输出：
+
+```bash
+ ==4528== Memcheck, a memory error detector
+==4528== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==4528== Using Valgrind-3.15.0 and LibVEX; rerun with -h for copyright info
+==4528== Command: ./nginx
+==4528==
+程序退出，再见!
+==4528==
+==4528== HEAP SUMMARY:
+==4528==     in use at exit: 568 bytes in 1 blocks
+==4528==   total heap usage: 7 allocs, 6 frees, 5,035 bytes allocated
+==4528==
+==4528== 568 bytes in 1 blocks are still reachable in loss record 1 of 1
+==4528==    at 0x4C29F73: malloc (vg_replace_malloc.c:309)
+==4528==    by 0x56C5C4C: __fopen_internal (in /usr/lib64/libc-2.17.so)
+==4528==    by 0x4013C8: CConfig::Load(char const*) (ngx_c_conf.cxx:37)
+==4528==    by 0x40109A: main (nginx.cxx:24)
+==4528==
+==4528== LEAK SUMMARY:
+==4528==    definitely lost: 0 bytes in 0 blocks
+==4528==    indirectly lost: 0 bytes in 0 blocks
+==4528==      possibly lost: 0 bytes in 0 blocks
+==4528==    still reachable: 568 bytes in 1 blocks
+==4528==         suppressed: 0 bytes in 0 blocks
+==4528==
+==4528== For lists of detected and suppressed errors, rerun with: -s
+==4528== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+```
+
+可以看到`ngx_c_conf.cxx:37`有泄漏，这行语句是`fp = fopen(pconfName,"r");`也就是打开文件的语句。
+
+
+
+>   偶尔用用，不要太依赖它。
+
+
+
+### 4.4 设置可执行程序的标题（名称）
+
+#### 4.4.1 原理和实现思路分析
+
+本项目也仿照nginx，设置了一个主进程和多个子进程。我们要设置主进程和子进程名，区分主进程和子进程，否则都叫`nginx`。
+
+参照eginx源码的`src/os/unix/ngx_setproctitle.c`，实现这个功能。
+
+
+
+>   需要知道：
+>
+>   -   可以通过命令行向`main()`函数传递参数，`argc`是参数个数，不需要给，`argv`是字符串数组，有多个
+>   -   第一个参数是执行可执行文件的命令`./nginx`，我们用ps查看也是这个进程
+>   -   如果在程序中修改`argv[0]`为hello，那么ps查看进程显示的是进程
+>   -   `argv`内存之后，紧接着的就是环境变量参数信息内存（是可执行程序执行时有关的所有环境变量参数信息），这一块内存可以通过一个全局的`environ[char **]`访问
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230301190332571.png" alt="image-20230301190332571" style="zoom:50%;" />
+
+**证明：**
+
+```cpp
+    //证明argv后面就是environ
+     /* points to environment, in Un*x */
+	if ( 	argv + argc + 1 == environ ) 
+	{
+		printf("========== ptr equals environ ==========\n\n");
+	}
+```
+
+
+
+**打印环境变量**
+
+```cpp
+for(int i = 0; i < argc; ++i)
+{        
+    printf("argv[%d]地址=%x    " ,i,(unsigned int)((unsigned long)argv[i]));
+    printf("argv[%d]内容=%s\n",i,argv[i]);
+}
+//下边环境变量随便打两个
+for(int i = 0; i < 2; ++i)
+{
+    printf("evriron[%d]地址=%x    " ,i,(unsigned int)((unsigned long)environ[i]));
+    printf("evriron[%d]内容=%s\n" ,i,environ[i]);
+}
+```
+
+输出：
+
+```
+argv[0]地址=4d1c7361    argv[0]内容=./nginx
+argv[1]地址=4d1c7369    argv[1]内容=-v
+argv[2]地址=4d1c736c    argv[2]内容=-s
+argv[3]地址=4d1c736f    argv[3]内容=4
+evriron[0]地址=4d1c7371    evriron[0]内容=LANG=zh_CN.UTF-8
+evriron[1]地址=4d1c7382    evriron[1]内容=USER=root
+========== ptr equals environ ==========
+```
+
+说明，它们的内存是紧紧挨着的。
+
+
+
+<mark>所以修改标题的主要难点在于，标题太长的话，可能把`argv`甚至`environ`中的内容覆盖掉。</mark>
+
+
+
+**实现思路：**
+
+1.   重新分配一块内存保存环境变量`environ`，用`environ`指向这块内存，原来的就算被修改也无所谓了。
+2.   再修改`argv[0]`所指向的内存，所以后面的参数是有可能覆盖的，但是无所谓，只要在修改前使用这些参数就行了
+
+
+
+创建`app/ngx_setproctitle.cxx`文件，在其中添加`ngx_init_setproctitle()`函数和`ngx_setproctitle()`：
+
+**app/ngx_setproctitle.cxx**
+
+```cpp
+//设置可执行程序标题相关函数：分配内存，并且把环境变量拷贝到新内存中来
+void ngx_init_setproctitle()
+{    
+    int i;
+    //统计环境变量所占的内存。注意判断方法是environ[i]是否为NULL作为环境变量结束标记
+    for (i = 0; environ[i]; i++) 
+    {
+        //g_environlen是全局变量
+        g_environlen += strlen(environ[i]) + 1; //+1是因为末尾有\0,是占实际内存位置的，要算进来
+    } //end for
+
+    //这里无需判断penvmen == NULL,有些编译器new会返回NULL，有些会报异常，但不管怎样，如果在重要的地方new失败了，无法收场，让程序失控崩溃，助你发现问题为好； 
+    
+    //gp_envmem是全局变量
+    gp_envmem = new char[g_environlen]; 
+    memset(gp_envmem,0,g_environlen);  //内存要清空防止出现问题
+
+    char *ptmp = gp_envmem;
+
+    //把原来的内存内容搬到新地方来
+    for (i = 0; environ[i]; i++) 
+    {
+        size_t size = strlen(environ[i]) + 1 ; //不要忘记+1，否则内存全乱套了，因为strlen是不包括字符串末尾的\0的
+        strcpy(ptmp,environ[i]);      //把原环境变量内容拷贝到新地方【新内存】
+        environ[i] = ptmp;            //然后还要让新环境变量指向这段新内存
+        ptmp += size;
+    }
+    return;
+}
+
+//设置可执行程序标题
+void ngx_setproctitle(const char *title)
+{
+    //前提是: 所有的命令行参数我们都不需要用到了(或者被使用过了)，可以被随意覆盖了；
+    //注意：我们的标题长度，不会长到原始标题和原始环境变量都装不下，否则怕出问题，不处理
+    
+    //(1)计算新标题长度
+    size_t ititlelen = strlen(title); 
+
+    //(2)计算总的原始的argv那块内存的总长度【包括各种参数】
+    size_t e_environlen = 0;     //e表示局部变量吧
+    for (int i = 0; g_os_argv[i]; i++)  
+    {
+        e_environlen += strlen(g_os_argv[i]) + 1;
+    }
+
+    size_t esy = e_environlen + g_environlen; //argv和environ内存总和
+    if( esy <= ititlelen)
+    {
+        //标题太长了，argv和environ总和都存不!! 注意字符串末尾多了个 \0，所以这块判断是 <=【也就是=都算存不下】
+        return;
+    }
+
+    //空间够保存标题的，够长，存得下，继续走下来    
+
+    //(3)设置后续的命令行参数为空，表示只有argv[]中只有一个元素了，这是好习惯；防止后续argv被滥用，因为很多判断是用argv[] == NULL来做结束标记判断的;
+    g_os_argv[1] = NULL;  
+
+    //(4)把标题弄进来，注意原来的命令行参数都会被覆盖掉，不要再使用这些命令行参数,而且g_os_argv[1]已经被设置为NULL了
+    char *ptmp = g_os_argv[0]; //让ptmp指向g_os_argv所指向的内存
+    strcpy(ptmp,title);
+    ptmp += ititlelen; //跳过标题
+
+    //(5)把剩余的原argv以及environ所占的内存全部清0，否则会出现在ps的cmd列可能还会残余一些没有被覆盖的内容；
+    size_t cha = esy - ititlelen;  //内存总和减去标题字符串长度(不含字符串末尾的\0)，剩余的大小，就是要memset的；
+    memset(ptmp,0,cha);  
+    return;
+}
+```
+
+main函数需要在最开始就调用`ngx_init_setproctitle()`函数，同时记得`delete`，否则会出现内存泄漏。
+
+main函数可以调用` ngx_setproctitle("nginx master");`，修改进程名。
+
+
+
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230301202641297.png" alt="image-20230301202641297" style="zoom:40%;" />
 

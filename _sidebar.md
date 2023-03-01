@@ -46,6 +46,7 @@
   - [09Linux多线程开发](C++Basic/09LinuxC++多线程开发.md)
   - [10Linxu网络编程](C++Basic/10Linux网络编程.md)
   - [11Webserver项目](C++Basic/11WebServer项目.md)
+  - [12Nginx学习](C++Basic/12Nginx核心源码.md)
 
   - [CMAKE](C++Basic/CMake.md)
   - [模版形参和实参](C++Basic/模版形参与模版实参.md)
