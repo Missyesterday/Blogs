@@ -1,1 +1,0 @@
-Linux,本文实验环境为Ubuntu20.04,CentOS在配置文件存放等方面与Ubuntu有所不同
