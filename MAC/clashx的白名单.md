@@ -1,0 +1,1 @@
+clashx的白名单地址文件：`~/.config/clash/proxyIgnoreList.plist`

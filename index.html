@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>LetsGoFun</title>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <meta name="description" content="旋风冲锋龙卷风的博客">
+  <meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+  <meta name="author" content="旋风冲锋龙卷风">
+  <!-- <link rel="stylesheet" href="js/vue.css"> -->
+  <link rel="stylesheet" href="js/buble.css">
+  
+  <link rel="stylesheet" href="js/sidebar.min.css" />
+  <link rel="icon" href="pic/icon.jpg" type="image/x-icon"/>
+  <link rel="shortcut icon" href="pic/icon.jpg" type="p_w_picpath/x-icon"/>  
+</head>
+<body>
+  <div id="app">Loading...</div>
+  <script>
+    window.$docsify = {
+      name: 'LetsGoFun',
+      auto2top: true,
+      repo: 'Missyesterday/Blogs',
+      loadSidebar: true,
+      loadNavbar: true,
+      mergeNavbar: true,
+      notFoundPage: true,
+      sidebarDisplayLevel: 0,
+      subMaxLevel: 3,
+      maxLevel: 3,
+      search: {
+        paths: 'auto',
+        placeholder: {
+          '/': '搜索'
+        },
+        noData: {
+          '/': '找不到结果'
+        },
+      }
+    }
+  </script>
+  <!-- Docsify v4 -->
+  <script src="js/docsify@4"></script>
+
+<!-- plugins -->
+
+<!-- 折叠侧边栏 -->
+<script src="js/docsify-sidebar-collapse.min.js"></script>
+
+  <!--代码高亮-->
+  <script src="js/prism-java.js"></script>
+  <script src="js/prism-python.js"></script>
+  <script src="js/prism-sql.js"></script>
+  <script src="js/prism-bash.js"></script>
+  <script src="js/prism-shell.js"></script>
+  <!-- <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-c.min.js"></script>
+<script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-cpp.min.js"></script> -->
+   <script src="js/prism-c.js"></script>
+  <script src="js/prism-cpp.js"></script>
+  <script src="js/prism-makefile.js"></script>
+
+
+  <!--全文搜索,直接用官方提供的无法生效-->
+  <script src="js/serach.min.js"></script>
+  <script src="js/countable.js"></script>
+  <!-- 上一篇/下一篇 -->
+<!--   <script src="//cdn.jsdelivr.net/npm/docsify-pagination/dist/docsify-pagination.min.js"></script> -->
+  <!-- 图片缩放插件 -->
+  <script src="js/zoom-image.min.js"></script>
+  <!-- 复制到剪切板 -->
+  <script src="js/docsify-copy-code.min.js"></script>
+  <!-- latex支持 -->
+  <!-- CDN files for docsify-katex -->
+  <!-- <script src="//cdn.jsdelivr.net/npm/docsify-katex@latest/dist/docsify-katex.js"></script> -->
+  <!-- or <script src="//cdn.jsdelivr.net/gh/upupming/docsify-katex@latest/dist/docsify-katex.js"></script> -->
+  <link rel="stylesheet" href="js/katex.min.css"/>
+  <script src="js/katex.min.js"/>
+  <!-- emoji支持 -->
+  <script src="js/emoji.min.js"></script>
+</body>
+</html>
