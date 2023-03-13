@@ -46,8 +46,10 @@
   - [09Linux多线程开发](C++Basic/09LinuxC++多线程开发.md)
   - [10Linxu网络编程](C++Basic/10Linux网络编程.md)
   - [11Webserver项目](C++Basic/11WebServer项目.md)
-  - [12Nginx学习](C++Basic/12Nginx核心源码.md)
+  - [12.1仿照Nginx的高性能服务器(上)](C++Basic/12.1%E4%BB%BF%E7%85%A7Nginx%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%A1%86%E6%9E%B6(%E4%B8%8A).md)
 
+  - [12.2仿照Nginx的高性能服务器(下)](C++Basic/12.2%E4%BB%BF%E7%85%A7nginx%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%A1%86%E6%9E%B6(%E4%B8%8B).md)
+  
   - [CMAKE](C++Basic/CMake.md)
   - [模版形参和实参](C++Basic/模版形参与模版实参.md)
   - [关于匿名对象](C++Basic/关于匿名对象.md)
@@ -67,6 +69,7 @@
   - [从URL到网网页](other/从输入URL到用户看到网页.md)
 
   - [Git](other/Git.md)
+  - [GDB调试多进程](Basic%20knowledge/一次GDB调试.md)
 
 
 - [MacOS相关](/)
