@@ -30,30 +30,26 @@
 - [C++](/)
   
   - [01C++基础](C++Basic/01C++基础.md)
-
   - [02C++提高](C++Basic/02C++提高.md)
-
   - [03《C++Primer》笔记](C++Basic/03C++Primer笔记.md)
-
   - [04《STL源码解析》笔记](C++Basic/04侯捷STL泛型编程笔记.md)
-
   - [05C++11&14新标准](C++Basic/05C++11&14新标准.md)
-
   - [06Linux C/C++](C++Basic/06Linux%20C%20and%20C++.md)
-
   - [07Linux C/C++多进程](C++Basic/07LinuxC++多进程.md)
   - [08《Effective C++》笔记](C++Basic/08EffectiveC++笔记.md)
   - [09Linux多线程开发](C++Basic/09LinuxC++多线程开发.md)
   - [10Linxu网络编程](C++Basic/10Linux网络编程.md)
   - [11Webserver项目](C++Basic/11WebServer项目.md)
   - [12.1仿照Nginx的高性能服务器(上)](C++Basic/12.1%E4%BB%BF%E7%85%A7Nginx%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%A1%86%E6%9E%B6(%E4%B8%8A).md)
-
   - [12.2仿照Nginx的高性能服务器(下)](C++Basic/12.2%E4%BB%BF%E7%85%A7nginx%E7%9A%84%E9%AB%98%E6%80%A7%E8%83%BD%E6%9C%8D%E5%8A%A1%E5%99%A8%E6%A1%86%E6%9E%B6(%E4%B8%8B).md)
   - [12MySQL数据库连接池](C++Basic/13手写数据库连接池.md)
-  
+  - [13手写数据库连接池](C++Basic/13手写数据库连接池.md)
+  - [14现代C++](C++Basic/14C++.md)
   - [CMAKE](C++Basic/CMake.md)
   - [模版形参和实参](C++Basic/模版形参与模版实参.md)
   - [关于匿名对象](C++Basic/关于匿名对象.md)
+  - [虚假唤醒](C++Basic/手写一个生产者消费者模型和虚假唤醒.md)
+  - [Nginx惊群](C++Basic/Nginx惊群.md)
   - [一些问题](C++Basic/一些问题.md)
 
 
@@ -70,6 +66,7 @@
 
   - [Git](other/Git.md)
   - [GDB调试多进程](Basic%20knowledge/一次GDB调试.md)
+  - [重新思考C++多态](Basic%20knowledge/重新思考C++的多态.md)
 
 
 - [MacOS相关](/)
@@ -89,6 +86,7 @@
 - [设计模式](/)
 
     - [01设计模式介绍](DesignPatterns/01%E8%AE%BE%E8%AE%A1%E6%A8%A1%E5%BC%8F%E4%BB%8B%E7%BB%8D.md)
+    - [02手写单例](DesignPatterns/02单例模式.md)
 
 - [数据结构](/)
 

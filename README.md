@@ -9,6 +9,22 @@
 「勿在浮沙筑高台」
 
 ***
+**仿照nginx的高性能服务器**
+
+
+项目地址: [https://github.com/Missyesterday/nginx_learn](https://github.com/Missyesterday/nginx_learn)
+
+多线程模型:
+<img src="pic/Threads.svg" style="zoom:60%;" />
+
+IO模型:
+<img src="pic/IO.svg" style="zoom:90%;" />
+
+
+
+
+
+***
 
 By 旋风冲锋龙卷风
 
