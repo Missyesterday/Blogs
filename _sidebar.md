@@ -45,6 +45,7 @@
   - [12MySQL数据库连接池](C++Basic/13手写数据库连接池.md)
   - [13手写数据库连接池](C++Basic/13手写数据库连接池.md)
   - [14现代C++](C++Basic/14C++.md)
+  - [15C++内存管理](C++Basic/15C%2B%2B%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86.md)
   - [CMAKE](C++Basic/CMake.md)
   - [模版形参和实参](C++Basic/模版形参与模版实参.md)
   - [关于匿名对象](C++Basic/关于匿名对象.md)
