@@ -380,7 +380,7 @@ Connection: Keep-Alive
 
 这样，TCP连接
 
-
+**HTTP使用长连接时**
 
 ### 服务端出现大量CLOSE_WAIT状态
 
