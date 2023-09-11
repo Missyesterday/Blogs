@@ -46,6 +46,8 @@ IPv4地址由32位正整数表示，IP地址在计算机是以二进制方式进
 
 IP地址分为5种类型，分别是A类、B类、C类、D类、E类。它们的二进制IP地址的开头分别是「0、10、110、1110、1111」，类似于哈夫曼编码，这些开头的二进制数也被称为「分类号」。
 
+<img src="https://raw.githubusercontent.com/Missyesterday/picgo/main/picgo/image-20230906155242942.png" alt="image-20230906155242942" style="zoom:33%;" />
+
 
 
 <img src="https://cdn.xiaolincoding.com/gh/xiaolincoder/ImageHost/计算机网络/IP/7.jpg" style="zoom:67%;" />
@@ -387,7 +389,7 @@ NAT/NAPT的缺点来源于「转换表」：
 
 ICMP，全称是「**Internet Control Message Protocol**」，也就是「**互联网控制报文协议**」。
 
-「控制」这这个协议的关键字。网络包在复杂的网络传输环境中，经常会遇到各种问题。当遇到问题时，需要传出消息，报告遇到了什么问题。
+「控制」是这这个协议的关键字。网络包在复杂的网络传输环境中，经常会遇到各种问题。当遇到问题时，需要传出消息，报告遇到了什么问题。
 
 **ICMP功能：**
 

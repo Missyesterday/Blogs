@@ -23,7 +23,7 @@ CMake是高级编译配置工具。
 
 -   `PROJECT(HELLO)` 指定了工程的名字，并且支持所有语言统一建议
 -   `PROJECT(HELLO CXX)` 指定了工程的名字，并且支持的语言是C++
--   `PROJECT(HELLO C CXX)` 指定了工程的名字，并且支持的语言是C和C++s
+-   `PROJECT(HELLO C CXX)` 指定了工程的名字，并且支持的语言是C和C++
 
 该式隐式定义了两个CMAKE变量
 
